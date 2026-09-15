@@ -1,32 +1,14 @@
-/*
- * =========================================================================================
- * BTL KỸ THUẬT VI XỬ LÝ - NHÓM 3 - TOPIC 4
- * Đề tài: Thiết kế mạch điện cảnh báo cháy sử dụng STM32F103C8T6, cảnh báo qua SMS & Call
- * Module: ESP32 WiFi & Firebase Gateway (Chỉ đóng vai trò cầu nối truyền nhận UART -> IoT)
- * =========================================================================================
- * 
- * SƠ ĐỒ KẾT NỐI UART VỚI STM32F103C8T6:
- * STM32 TX (e.g. PA9 / PA2)  --> ESP32 RX2 (GPIO 16)
- * STM32 RX (e.g. PA10 / PA3) <-- ESP32 TX2 (GPIO 17)
- * STM32 GND                  --- ESP32 GND (BẮT BUỘC NỐI CHUNG MASS GND)
- * 
- * LƯU Ý: ESP32 chỉ làm nhiệm vụ nhận dữ liệu UART từ STM32 và đẩy lên Firebase.
- * Mọi xử lý ngoại vi (MQ5, LCD20x4 I2C, SIM800L, Còi báo, Button) đều do STM32F103 đảm nhiệm.
- */
-
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h> // Cài đặt qua Arduino Library Manager: "ArduinoJson by Benoit Blanchon" (v6 or v7)
 
-// =====================================================================
+
 // CẤU HÌNH WIFI & FIREBASE
-// =====================================================================
-const char* WIFI_SSID     = "YOUR_WIFI_SSID";         // Tên WiFi
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";     // Mật khẩu WiFi
+const char* WIFI_SSID     = "esp23";         // Tên WiFi
+const char* WIFI_PASSWORD = "nvcuong123";     // Mật khẩu WiFi
 
 // Firebase Realtime Database URL (không có dấu / ở cuối)
-// Ví dụ: "https://btl-nhom3-gas-alert-default-rtdb.firebaseio.com"
 const char* FIREBASE_HOST = "https://btl-nhom3-gas-alert-default-rtdb.firebaseio.com";
 const char* DATA_PATH     = "/device_data.json";
 
@@ -53,18 +35,11 @@ struct SensorData {
 } currentData;
 
 unsigned long lastUploadTime = 0;
-const unsigned long UPLOAD_INTERVAL_MS = 1500; // Đẩy dữ liệu mỗi 1.5s nếu có cập nhật
+const unsigned long UPLOAD_INTERVAL_MS = 1000; // Đẩy dữ liệu mỗi 1s nếu có cập nhật
 
-// =====================================================================
 // KHỞI TẠO
-// =====================================================================
 void setup() {
     Serial.begin(115200); // Debug qua Serial Monitor máy tính
-    delay(1000);
-    Serial.println("\n\n========================================================");
-    Serial.println("  ESP32 FIREBASE GATEWAY - BTL KTVXL NHOM 3 TOPIC 4");
-    Serial.println("========================================================");
-
     // Khởi tạo UART kết nối STM32
     STM32Serial.begin(UART_BAUD, SERIAL_8N1, STM32_RX_PIN, STM32_TX_PIN);
     Serial.printf("[UART] Listening to STM32 on RX:%d, TX:%d at %d baud\n", STM32_RX_PIN, STM32_TX_PIN, UART_BAUD);
@@ -73,9 +48,7 @@ void setup() {
     connectToWiFi();
 }
 
-// =====================================================================
-// VÒNG LẶP CHÍNH (LOOP)
-// =====================================================================
+
 void loop() {
     // 1. Đọc dữ liệu từ STM32 gửi sang qua UART
     readSTM32Data();
@@ -92,9 +65,7 @@ void loop() {
     }
 }
 
-// =====================================================================
 // HÀM KẾT NỐI WIFI
-// =====================================================================
 void connectToWiFi() {
     Serial.printf("[WIFI] Dang ket noi toi: %s ...\n", WIFI_SSID);
     WiFi.mode(WIFI_STA);
@@ -116,12 +87,10 @@ void connectToWiFi() {
     }
 }
 
-// =====================================================================
 // HÀM ĐỌC DỮ LIỆU TỪ STM32 QUA UART
 // Hỗ trợ cả 2 định dạng bản tin:
 // 1. JSON String: {"ppm":142,"status":"SMS SENT","buzzer":1,"mute":0,"adc":1940}
 // 2. Simple String: PPM:142,STATUS:IN CALL,BUZZER:1,MUTE:0
-// =====================================================================
 void readSTM32Data() {
     while (STM32Serial.available() > 0) {
         String line = STM32Serial.readStringUntil('\n');
