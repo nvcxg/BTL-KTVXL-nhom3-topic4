@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ Thống Cảnh Báo Khí Gas & Cháy Nổ | STM32 & ESP32 IoT</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                        }
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'ping-slow': 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite',
+                        'ring': 'ring 1.5s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        ring: {
+                            '0%, 100%': { transform: 'rotate(0deg)' },
+                            '20%, 60%': { transform: 'rotate(-15deg)' },
+                            '40%, 80%': { transform: 'rotate(15deg)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-['Inter'] antialiased selection:bg-cyan-500 selection:text-white">
+
+    <!-- Background glow effect -->
+    <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
+        <div class="absolute -top-40 -left-40 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl"></div>
+        <div class="absolute top-1/3 -right-40 w-96 h-96 bg-red-500/10 rounded-full blur-3xl"></div>
+        <div class="absolute -bottom-40 left-1/3 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl"></div>
+    </div>
+
+    <div class="relative z-10 flex flex-col min-h-screen">
+        <!-- Top Navbar -->
+        <header class="border-b border-slate-800/80 bg-slate-900/80 backdrop-blur-md sticky top-0 z-50">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
+                <!-- Logo & Title -->
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 text-white font-bold">
+                        <i class="fa-solid fa-fire-flame-curved text-xl"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h1 class="text-base sm:text-lg font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+                                Gas & Fire Warning System
+                            </h1>
+                            <span class="text-xs px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-700/50 text-cyan-400 font-mono">BTL Nhóm 3 - Topic 4</span>
+                        </div>
+                        <p class="text-xs text-slate-400">STM32F103C8T6 (Core) &bull; ESP32 (UART Gateway) &bull; SIM800L</p>
+                    </div>
+                </div>
+
+                <!-- Status & Action Badges -->
+                <div class="flex items-center gap-3">
+                    <!-- Device Online Indicator -->
+                    <div id="device-status-badge" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/90 border border-slate-700 text-xs">
+                        <span id="device-pulse-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span id="device-status-text" class="font-medium text-slate-300">ESP32: Online</span>
+                    </div>
+
+                    <!-- Firebase Status Badge -->
+                    <div id="firebase-status-badge" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/90 border border-slate-700 text-xs text-slate-300">
+                        <i id="firebase-icon" class="fa-solid fa-bolt text-amber-400"></i>
+                        <span id="firebase-status-text">Đang kết nối...</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+            
+            <!-- Global Alert Banner (Triggered when Gas >= 136 or >= 150) -->
+            <div id="alert-banner" class="hidden rounded-xl border p-4 transition-all duration-300 flex items-start sm:items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <div id="alert-banner-icon" class="w-10 h-10 rounded-lg flex items-center justify-center text-xl flex-shrink-0">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <div>
+                        <h2 id="alert-banner-title" class="font-bold text-base">CẢNH BÁO NGUY HIỂM!</h2>
+                        <p id="alert-banner-desc" class="text-xs sm:text-sm text-slate-300">Nồng độ khí gas vượt ngưỡng cho phép.</p>
+                    </div>
+                </div>
+                <div id="alert-banner-action" class="flex-shrink-0">
+                    <span id="alert-banner-badge" class="px-3 py-1 rounded-full text-xs font-semibold">CẤP ĐỘ 2</span>
+                </div>
+            </div>
+
+            <!-- Top Grid Cards: Sensors & System Status -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+                
+                <!-- Card 1: PPM Reading -->
+                <div class="relative overflow-hidden rounded-2xl bg-slate-900/60 backdrop-blur-sm border border-slate-800 p-5 hover:border-slate-700 transition flex flex-col justify-between">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="p-2 rounded-lg bg-cyan-500/10 text-cyan-400">
+                                <i class="fa-solid fa-gauge-high"></i>
+                            </span>
+                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Nồng Độ Khí Gas</span>
+                        </div>
+                        <span id="ppm-threshold-badge" class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            An Toàn
+                        </span>
+                    </div>
+                    
+                    <div class="my-2">
+                        <div class="flex items-baseline gap-2">
+                            <span id="val-ppm" class="text-5xl font-black font-['JetBrains_Mono'] tracking-tight text-white">
+                                0
+                            </span>
+                            <span class="text-slate-400 text-sm font-semibold">PPM</span>
+                        </div>
+                        
+                        <!-- Progress Bar for Thresholds -->
+                        <div class="mt-4">
+                            <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+                                <span>0</span>
+                                <span class="text-amber-400 font-medium">136 (SMS)</span>
+                                <span class="text-red-400 font-medium">150 (CALL)</span>
+                                <span>300+</span>
+                            </div>
+                            <div class="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden p-0.5 border border-slate-700/50">
+                                <div id="ppm-bar" class="bg-emerald-500 h-1.5 rounded-full transition-all duration-500" style="width: 5%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+                        <span>MQ5 Sensor (ADC)</span>
+                        <span id="val-raw-adc" class="font-mono text-slate-300">ADC: ---</span>
+                    </div>
+                </div>
+
+                <!-- Card 2: SIM Module & Call Status -->
+                <div class="relative overflow-hidden rounded-2xl bg-slate-900/60 backdrop-blur-sm border border-slate-800 p-5 hover:border-slate-700 transition flex flex-col justify-between">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="p-2 rounded-lg bg-blue-500/10 text-blue-400">
+                                <i class="fa-solid fa-sim-card"></i>
+                            </span>
+                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Module SIM800L</span>
+                        </div>
+                        <span id="sim-carrier-badge" class="text-xs font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                            Viettel
+                        </span>
+                    </div>
+
+                    <div class="my-2 space-y-2">
+                        <!-- Module Call State Badge -->
+                        <div class="flex items-center gap-3">
+                            <div id="sim-status-icon-box" class="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-xl text-slate-400">
+                                <i id="sim-status-icon" class="fa-solid fa-phone-slash"></i>
+                            </div>
+                            <div>
+                                <span class="text-[11px] text-slate-400 block uppercase font-medium">Trạng thái cuộc gọi</span>
+                                <span id="val-module-status" class="text-xl font-bold font-['JetBrains_Mono'] text-white">
+                                    NOT CALL
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- SMS & Phone info -->
+                        <div class="bg-slate-950/60 rounded-lg p-2.5 border border-slate-800 text-xs space-y-1">
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">SMS Cảnh báo:</span>
+                                <span id="val-sms-status" class="font-medium text-slate-300">Chưa gửi</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">Số nhận tin:</span>
+                                <span id="val-target-phone" class="font-mono text-cyan-400">+84 ••• ••• •••</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+                        <span>UART Baud: 9600</span>
+                        <span id="sim-signal-strength" class="text-emerald-400"><i class="fa-solid fa-signal mr-1"></i>Sóng tốt</span>
+                    </div>
+                </div>
+
+                <!-- Card 3: Buzzer & False Alarm Mute State -->
+                <div class="relative overflow-hidden rounded-2xl bg-slate-900/60 backdrop-blur-sm border border-slate-800 p-5 hover:border-slate-700 transition flex flex-col justify-between">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="p-2 rounded-lg bg-purple-500/10 text-purple-400">
+                                <i class="fa-solid fa-bullhorn"></i>
+                            </span>
+                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Còi & Cảnh Báo Giả</span>
+                        </div>
+                        <span id="buzzer-state-badge" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                            OFF
+                        </span>
+                    </div>
+
+                    <div class="my-2 space-y-3">
+                        <!-- Speaker Status -->
+                        <div class="flex items-center justify-between bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                            <div class="flex items-center gap-2.5">
+                                <span id="buzzer-icon-bg" class="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400">
+                                    <i id="buzzer-icon" class="fa-solid fa-volume-xmark"></i>
+                                </span>
+                                <div>
+                                    <span class="text-xs text-slate-400 block">Còi Speaker</span>
+                                    <span id="val-buzzer-text" class="text-sm font-bold text-slate-200">Đang tắt</span>
+                                </div>
+                            </div>
+                            <span id="buzzer-pulse" class="w-3 h-3 rounded-full bg-slate-600"></span>
+                        </div>
+
+                        <!-- Button Mute State (False Alarm) -->
+                        <div class="flex items-center justify-between bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                            <div class="flex items-center gap-2.5">
+                                <span id="mute-icon-bg" class="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400">
+                                    <i id="mute-icon" class="fa-solid fa-hand"></i>
+                                </span>
+                                <div>
+                                    <span class="text-xs text-slate-400 block">Nút nhấn tắt cảnh báo</span>
+                                    <span id="val-mute-text" class="text-sm font-bold text-slate-200">Bình thường</span>
+                                </div>
+                            </div>
+                            <span id="val-mute-pill" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">READY</span>
+                        </div>
+                    </div>
+
+                    <div class="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+                        <span>Xử lý tại: STM32F103</span>
+                        <span class="text-slate-400">Button EXT Interrupt</span>
+                    </div>
+                </div>
+
+                <!-- Card 4: System Telemetry & Heartbeat -->
+                <div class="relative overflow-hidden rounded-2xl bg-slate-900/60 backdrop-blur-sm border border-slate-800 p-5 hover:border-slate-700 transition flex flex-col justify-between">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="p-2 rounded-lg bg-amber-500/10 text-amber-400">
+                                <i class="fa-solid fa-microchip"></i>
+                            </span>
+                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Hệ Thống</span>
+                        </div>
+                        <span class="text-xs font-mono text-cyan-400 bg-cyan-950/50 px-2 py-0.5 rounded border border-cyan-800/40">
+                            I2C LCD 20x4
+                        </span>
+                    </div>
+
+                    <div class="my-2 space-y-2">
+                        <!-- LCD Screen Preview Mock -->
+                        <div class="bg-emerald-950/40 border border-emerald-700/60 rounded-lg p-2.5 font-['JetBrains_Mono'] text-[11px] text-emerald-400 shadow-inner">
+                            <div class="flex justify-between border-b border-emerald-900/50 pb-0.5 mb-1 text-[10px] text-emerald-500">
+                                <span>LCD 20x4 PREVIEW</span>
+                                <span>I2C: 0x27</span>
+                            </div>
+                            <div id="lcd-line-1" class="leading-tight">GAS ALERT SYSTEM</div>
+                            <div id="lcd-line-2" class="leading-tight font-bold text-emerald-300">PPM: 0   [SAFE]</div>
+                            <div id="lcd-line-3" class="leading-tight">SIM: NOT CALL</div>
+                            <div id="lcd-line-4" class="leading-tight">BUZZER: OFF</div>
+                        </div>
+
+                        <div class="flex items-center justify-between text-xs pt-1">
+                            <span class="text-slate-400">Cập nhật:</span>
+                            <span id="val-last-updated" class="font-mono text-slate-300">Vừa xong</span>
+                        </div>
+                    </div>
+
+                    <div class="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+                        <span>Bản tin UART</span>
+                        <span id="val-packet-count" class="font-mono text-slate-300">0 gói tin</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Middle Section: Realtime Chart & Rules / Logic Info -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                <!-- Realtime Chart (2 cols) -->
+                <div class="lg:col-span-2 rounded-2xl bg-slate-900/60 backdrop-blur-sm border border-slate-800 p-5 flex flex-col justify-between">
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                        <div>
+                            <h3 class="font-bold text-slate-100 flex items-center gap-2">
+                                <i class="fa-solid fa-chart-line text-cyan-400"></i>
+                                Biểu đồ nồng độ khí Gas thời gian thực (PPM)
+                            </h3>
+                            <p class="text-xs text-slate-400">Cập nhật liên tục từ STM32 qua ESP32 Gateway</p>
+                        </div>
+                        
+                        <!-- Chart Legend / Controls -->
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs px-2 py-1 rounded bg-slate-800 border border-slate-700 text-slate-300">
+                                <span class="inline-block w-2 h-2 rounded-full bg-cyan-400 mr-1"></span> PPM
+                            </span>
+                            <button id="btn-clear-chart" class="text-xs px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition" title="Xóa lịch sử biểu đồ">
+                                <i class="fa-solid fa-rotate-left mr-1"></i> Reset
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Canvas container -->
+                    <div class="relative h-64 sm:h-72 w-full">
+                        <canvas id="ppmChart"></canvas>
+                    </div>
+
+                    <div class="mt-4 pt-3 border-t border-slate-800/80 grid grid-cols-3 gap-2 text-center text-xs">
+                        <div class="bg-slate-950/50 p-2 rounded-lg border border-slate-800">
+                            <span class="text-slate-400 block">Thấp nhất (Min)</span>
+                            <span id="val-min-ppm" class="font-mono font-bold text-slate-200">0 PPM</span>
+                        </div>
+                        <div class="bg-slate-950/50 p-2 rounded-lg border border-slate-800">
+                            <span class="text-slate-400 block">Trung bình (Avg)</span>
+                            <span id="val-avg-ppm" class="font-mono font-bold text-slate-200">0 PPM</span>
+                        </div>
+                        <div class="bg-slate-950/50 p-2 rounded-lg border border-slate-800">
+                            <span class="text-slate-400 block">Cao nhất (Max)</span>
+                            <span id="val-max-ppm" class="font-mono font-bold text-slate-200">0 PPM</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Logic Rules Reference & Topic Requirements -->
+                <div class="rounded-2xl bg-slate-900/60 backdrop-blur-sm border border-slate-800 p-5 flex flex-col justify-between">
+                    <div>
+                        <h3 class="font-bold text-slate-100 flex items-center gap-2 mb-3">
+                            <i class="fa-solid fa-shield-halved text-amber-400"></i>
+                            Quy tắc kích hoạt cảnh báo
+                        </h3>
+                        
+                        <div class="space-y-3 text-xs">
+                            <!-- Rule 1: Normal -->
+                            <div class="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-semibold text-emerald-400 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-circle-check"></i> PPM &lt; 136
+                                    </span>
+                                    <span class="px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 font-mono text-[10px]">AN TOÀN</span>
+                                </div>
+                                <p class="text-slate-400 text-[11px]">Hệ thống giám sát bình thường, còi tắt, không gửi tin nhắn hay gọi điện.</p>
+                            </div>
+
+                            <!-- Rule 2: Warning Level 1 -->
+                            <div class="p-3 rounded-xl bg-amber-950/20 border border-amber-800/40 space-y-1">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-semibold text-amber-400 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-bell"></i> 136 &le; PPM &lt; 150
+                                    </span>
+                                    <span class="px-2 py-0.5 rounded bg-amber-950 text-amber-300 font-mono text-[10px]">CẢNH BÁO CẤP 1</span>
+                                </div>
+                                <ul class="text-slate-300 text-[11px] list-disc list-inside space-y-0.5">
+                                    <li>Module SIM gửi tin nhắn <b class="text-amber-300">SMS cảnh báo</b>.</li>
+                                    <li>Còi Speaker kêu liên tục.</li>
+                                </ul>
+                            </div>
+
+                            <!-- Rule 3: Danger Level 2 -->
+                            <div class="p-3 rounded-xl bg-red-950/20 border border-red-800/40 space-y-1">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-semibold text-red-400 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-phone-volume"></i> PPM &ge; 150
+                                    </span>
+                                    <span class="px-2 py-0.5 rounded bg-red-950 text-red-300 font-mono text-[10px]">NGUY HIỂM CẤP 2</span>
+                                </div>
+                                <ul class="text-slate-300 text-[11px] list-disc list-inside space-y-0.5">
+                                    <li>Module SIM phát <b class="text-red-300">cuộc gọi trực tiếp (IN CALL)</b>.</li>
+                                    <li>Còi Speaker kêu công suất tối đa.</li>
+                                </ul>
+                            </div>
+
+                            <!-- Rule 4: False Alarm Button -->
+                            <div class="p-3 rounded-xl bg-purple-950/20 border border-purple-800/40 space-y-1">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-semibold text-purple-400 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-power-off"></i> Nút Button Mute
+                                    </span>
+                                    <span class="px-2 py-0.5 rounded bg-purple-950 text-purple-300 font-mono text-[10px]">XỬ LÝ SAI SỐ</span>
+                                </div>
+                                <p class="text-slate-300 text-[11px]">Nhấn nút cứng trên STM32 để tạm ngắt còi/LED khi phát hiện cảnh báo giả.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3 pt-3 border-t border-slate-800 text-[11px] text-slate-500">
+                        <i class="fa-solid fa-circle-info mr-1"></i> STM32F103 xử lý ngắt và ngoại vi (không dùng HAL, chuẩn SPL/Registers).
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Bottom Section: Live Event Log Table -->
+            <div class="rounded-2xl bg-slate-900/60 backdrop-blur-sm border border-slate-800 p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-list-check text-cyan-400"></i>
+                        <h3 class="font-bold text-slate-100">Nhật ký sự kiện hệ thống (Live Logs)</h3>
+                    </div>
+                    <button id="btn-clear-logs" class="text-xs px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition">
+                        <i class="fa-solid fa-trash-can mr-1"></i> Xóa log
+                    </button>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs text-slate-300">
+                        <thead class="bg-slate-950/80 text-slate-400 uppercase font-mono text-[11px] border-b border-slate-800">
+                            <tr>
+                                <th class="px-4 py-3">Thời gian</th>
+                                <th class="px-4 py-3">Nồng độ (PPM)</th>
+                                <th class="px-4 py-3">Trạng thái Module</th>
+                                <th class="px-4 py-3">Còi Báo</th>
+                                <th class="px-4 py-3">Nút Tắt Cảnh Báo</th>
+                                <th class="px-4 py-3">Mô tả sự kiện</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logs-table-body" class="divide-y divide-slate-800/60 font-mono">
+                            <!-- Populated dynamically via JS -->
+                            <tr class="text-slate-500 text-center">
+                                <td colspan="6" class="py-6">Đang lắng nghe dữ liệu từ Firebase...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Footer -->
+        <footer class="border-t border-slate-800/80 bg-slate-950/80 py-4 text-center text-xs text-slate-500">
+            <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+                <span>&copy; 2026 BTL Kỹ thuật vi xử lý - Nhóm 3 - Topic 4</span>
+                <span class="flex items-center gap-2">
+                    <i class="fa-solid fa-lock text-emerald-400"></i>
+                    <span>Chế độ: <b>Read-Only Public</b> (An toàn & Bảo mật Database)</span>
+                </span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
+

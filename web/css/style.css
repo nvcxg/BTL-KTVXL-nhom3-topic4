@@ -1,0 +1,54 @@
+/* Custom styles and animations */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #020617;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #1e293b;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #334155;
+}
+
+/* Glass card enhancement */
+.glass-card {
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Glowing text effects */
+.glow-cyan {
+    text-shadow: 0 0 15px rgba(6, 182, 212, 0.5);
+}
+
+.glow-amber {
+    text-shadow: 0 0 15px rgba(245, 158, 11, 0.5);
+}
+
+.glow-red {
+    text-shadow: 0 0 20px rgba(239, 68, 68, 0.7);
+}
+
+/* State badge pulse */
+@keyframes ringCall {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.08);
+    }
+}
+
+.animate-call-active {
+    animation: ringCall 0.8s ease-in-out infinite;
+}
+
