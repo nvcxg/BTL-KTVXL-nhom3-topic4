@@ -1,0 +1,17 @@
+{
+  "rules": {
+    "device_data": {
+      ".read": true,
+      ".write": false
+    },
+    "history": {
+      ".read": true,
+      ".write": false
+    },
+    "logs": {
+      ".read": true,
+      ".write": false
+    }
+  }
+}
+
