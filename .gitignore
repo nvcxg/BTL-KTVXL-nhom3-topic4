@@ -1,0 +1,26 @@
+# Keil MDK-ARM
+*.uvoptx
+*.uvguix.*
+Objects/
+Listings/
+*.axf
+*.build_log.htm
+*.dep
+*.map
+
+# STM32CubeIDE
+Debug/
+Release/
+*.elf
+*.bin
+*.hex
+*.list
+
+# ESP32 / Arduino / PlatformIO
+.pio/
+.vscode/
+build/
+
+# OS Junk
+.DS_Store
+Thumbs.db
